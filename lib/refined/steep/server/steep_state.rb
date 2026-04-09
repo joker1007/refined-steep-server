@@ -52,8 +52,7 @@ module Refined
         # @rbs path: Pathname
         # @rbs return: ::Steep::Project::Target?
         def target_for_path(path)
-          project.target_for_inline_source_path(path) ||
-            project.target_for_source_path(path) ||
+          project.target_for_source_path(path) ||
             project.target_for_signature_path(path)
         end
 

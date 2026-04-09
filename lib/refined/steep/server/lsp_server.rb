@@ -515,7 +515,7 @@ module Refined
           progress = start_progress("Type checking")
 
           target = state.project.target_for_source_path(path) ||
-                   state.project.target_for_inline_source_path(path)
+                   state.project.target_for_source_path(path)
 
           if target
             logger.debug { "Type checking source: path=#{path} target=#{target.name}" }
@@ -567,36 +567,25 @@ module Refined
         # @rbs trigger: String?
         # @rbs return: Array[untyped]?
         def complete_items(state, path, line, column, trigger)
-          case
-          when target = state.project.target_for_inline_source_path(path) || state.project.target_for_source_path(path)
-            file = state.type_check_service.source_files[path] or return nil
-            subtyping = state.type_check_service.signature_services.fetch(target.name).current_subtyping or return nil
+          target = state.project.target_for_source_path(path)
+          return nil unless target
 
-            provider = ::Steep::Services::CompletionProvider::Ruby.new(
-              source_text: file.content,
-              path: path,
-              subtyping: subtyping,
-            )
+          file = state.type_check_service.source_files[path] or return nil
+          subtyping = state.type_check_service.signature_services.fetch(target.name).current_subtyping or return nil
 
-            if (prefix_size, items = provider.run_at_comment(line: line, column: column))
-              items.map { |item| format_completion_item(item) }
-            else
-              items = begin
-                provider.run(line: line, column: column)
-              rescue Parser::SyntaxError
-                [] #: Array[untyped]
-              end
-              items.map { |item| format_completion_item(item) }
-            end
-          when target = state.project.target_for_signature_path(path)
-            sig_service = state.type_check_service.signature_services[target.name] or return nil
-            completion = ::Steep::Services::CompletionProvider::RBS.new(path, sig_service)
-            prefix_size, type_names = completion.run(line, column)
+          provider = ::Steep::Services::CompletionProvider.new(
+            source_text: file.content,
+            path: path,
+            subtyping: subtyping,
+          )
 
-            type_names.map do |absolute_name, relative_name|
-              format_rbs_completion_item(sig_service, absolute_name, relative_name.to_s, prefix_size, line, column)
-            end
+          items = begin
+            provider.run(line: line, column: column)
+          rescue Parser::SyntaxError
+            [] #: Array[untyped]
           end
+
+          items.map { |item| format_completion_item(item) }
         end
 
         # @rbs item: untyped
@@ -687,33 +676,13 @@ module Refined
           end
         end
 
-        # @rbs sig_service: untyped
-        # @rbs absolute_name: untyped
-        # @rbs complete_text: String
-        # @rbs prefix_size: Integer
-        # @rbs line: Integer
-        # @rbs column: Integer
-        # @rbs return: untyped
-        def format_rbs_completion_item(sig_service, absolute_name, complete_text, prefix_size, line, column)
-          range = Interface::Range.new(
-            start: Interface::Position.new(line: line - 1, character: column - prefix_size),
-            end: Interface::Position.new(line: line - 1, character: column),
-          )
-
-          Interface::CompletionItem.new(
-            label: complete_text,
-            text_edit: Interface::TextEdit.new(range: range, new_text: complete_text),
-            kind: Constant::CompletionItemKind::CLASS,
-          )
-        end
-
         # @rbs state: SteepState
         # @rbs path: Pathname
         # @rbs line: Integer
         # @rbs column: Integer
         # @rbs return: untyped
         def compute_signature_help(state, path, line, column)
-          target = state.project.target_for_inline_source_path(path) || state.project.target_for_source_path(path)
+          target = state.project.target_for_source_path(path)
           return unless target
 
           file = state.type_check_service.source_files[path]

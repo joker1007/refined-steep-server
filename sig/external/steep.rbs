@@ -31,7 +31,6 @@ module Steep
     def absolute_path: (Pathname path) -> Pathname
     def target_for_source_path: (Pathname path) -> Target?
     def target_for_signature_path: (Pathname path) -> Target?
-    def target_for_inline_source_path: (Pathname path) -> Target?
 
     class Target
       attr_reader name: Symbol
@@ -116,17 +115,9 @@ module Steep
       def run: (line: Integer, column: Integer) -> [Array[untyped], Integer]?
     end
 
-    module CompletionProvider
-      class Ruby
-        def initialize: (source_text: String, path: Pathname, subtyping: untyped) -> void
-        def run: (line: Integer, column: Integer) -> Array[untyped]
-        def run_at_comment: (line: Integer, column: Integer) -> [Integer, Array[untyped]]?
-      end
-
-      class RBS
-        def initialize: (Pathname path, SignatureService sig_service) -> void
-        def run: (Integer line, Integer column) -> [Integer, Array[[untyped, untyped]]]
-      end
+    class CompletionProvider
+      def initialize: (source_text: String, path: Pathname, subtyping: untyped) -> void
+      def run: (line: Integer, column: Integer) -> Array[untyped]
 
       class LocalVariableItem
         attr_reader identifier: Symbol
