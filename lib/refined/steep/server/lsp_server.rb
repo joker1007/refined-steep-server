@@ -611,21 +611,27 @@ module Refined
             end: Interface::Position.new(line: item.range.end.line - 1, character: item.range.end.column),
           )
 
+          formatter = ::Steep::Server::LSPFormatter
+
           case item
           when ::Steep::Services::CompletionProvider::LocalVariableItem
             Interface::CompletionItem.new(
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::VARIABLE,
               label_details: Interface::CompletionItemLabelDetails.new(description: item.type.to_s),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               insert_text: item.identifier.to_s,
               sort_text: item.identifier.to_s,
             )
           when ::Steep::Services::CompletionProvider::ConstantItem
             kind = (item.class? || item.module?) ? Constant::CompletionItemKind::CLASS : Constant::CompletionItemKind::CONSTANT
+            detail = formatter.declaration_summary(item.decl)
 
             Interface::CompletionItem.new(
               label: item.identifier.to_s,
               kind: kind,
+              label_details: Interface::CompletionItemLabelDetails.new(description: detail),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               text_edit: Interface::TextEdit.new(range: range, new_text: item.identifier.to_s),
             )
           when ::Steep::Services::CompletionProvider::SimpleMethodNameItem
@@ -633,6 +639,7 @@ module Refined
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::FUNCTION,
               label_details: Interface::CompletionItemLabelDetails.new(description: item.method_name.relative.to_s),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               insert_text: item.identifier.to_s,
             )
           when ::Steep::Services::CompletionProvider::ComplexMethodNameItem
@@ -641,6 +648,7 @@ module Refined
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::FUNCTION,
               label_details: Interface::CompletionItemLabelDetails.new(description: method_names.join(", ")),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               insert_text: item.identifier.to_s,
             )
           when ::Steep::Services::CompletionProvider::GeneratedMethodNameItem
@@ -648,6 +656,7 @@ module Refined
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::FUNCTION,
               label_details: Interface::CompletionItemLabelDetails.new(description: "(Generated)"),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               insert_text: item.identifier.to_s,
             )
           when ::Steep::Services::CompletionProvider::InstanceVariableItem
@@ -655,6 +664,7 @@ module Refined
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::FIELD,
               label_details: Interface::CompletionItemLabelDetails.new(description: item.type.to_s),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               text_edit: Interface::TextEdit.new(range: range, new_text: item.identifier.to_s),
             )
           when ::Steep::Services::CompletionProvider::KeywordArgumentItem
@@ -662,6 +672,7 @@ module Refined
               label: item.identifier.to_s,
               kind: Constant::CompletionItemKind::FIELD,
               label_details: Interface::CompletionItemLabelDetails.new(description: "Keyword argument"),
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               text_edit: Interface::TextEdit.new(range: range, new_text: item.identifier.to_s),
             )
           when ::Steep::Services::CompletionProvider::TypeNameItem
@@ -674,11 +685,13 @@ module Refined
             Interface::CompletionItem.new(
               label: item.relative_type_name.to_s,
               kind: kind,
+              documentation: formatter.markup_content { formatter.format_completion_docs(item) },
               text_edit: Interface::TextEdit.new(range: range, new_text: item.relative_type_name.to_s),
             )
           when ::Steep::Services::CompletionProvider::TextItem
             Interface::CompletionItem.new(
               label: item.label,
+              label_details: item.help_text && Interface::CompletionItemLabelDetails.new(description: item.help_text),
               kind: Constant::CompletionItemKind::SNIPPET,
               insert_text_format: Constant::InsertTextFormat::SNIPPET,
               text_edit: Interface::TextEdit.new(range: range, new_text: item.text),

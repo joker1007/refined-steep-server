@@ -212,9 +212,18 @@ RSpec.describe Refined::Steep::Server::LspServer do
         result = completion_response[:result]
         expect(result).to include(:items)
 
-        labels = result[:items].map { |item| item[:label] }
+        items = result[:items]
+        labels = items.map { |item| item[:label] }
         expect(labels).to include("name")
         expect(labels).to include("greet")
+
+        # Completion items should include documentation with type info
+        name_item = items.find { |item| item[:label] == "name" }
+        expect(name_item[:documentation]).not_to be_nil
+        expect(name_item[:documentation][:kind]).to eq("markdown")
+
+        greet_item = items.find { |item| item[:label] == "greet" }
+        expect(greet_item[:documentation]).not_to be_nil
       end
 
       it "returns empty completion list when no completions available" do

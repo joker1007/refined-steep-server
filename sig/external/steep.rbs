@@ -7,6 +7,9 @@ module Steep
   module Server
     module LSPFormatter
       def self.format_hover_content: (untyped content) -> untyped
+      def self.format_completion_docs: (untyped item) -> String?
+      def self.declaration_summary: (untyped decl) -> String?
+      def self.markup_content: (?String? string) { () -> String? } -> untyped
     end
   end
 
@@ -128,8 +131,13 @@ module Steep
       class ConstantItem
         attr_reader identifier: Symbol
         attr_reader range: untyped
+        attr_reader env: untyped
+        attr_reader full_name: untyped
         def class?: () -> bool
         def module?: () -> bool
+        def decl: () -> untyped
+        def comments: () -> Array[untyped]
+        def deprecated?: () -> bool
       end
 
       class SimpleMethodNameItem
