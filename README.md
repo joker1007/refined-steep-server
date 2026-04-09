@@ -28,7 +28,7 @@ refined-steep-server takes a different approach: it runs everything in a single 
 ### Additional Features
 
 - Incremental text document synchronization
-- Automatic type checking on file open/change with diagnostic publishing
+- Type checking runs on file open and file save (not on every keystroke)
 - WorkDoneProgress notifications for type checking progress
 - Steepfile auto-discovery (searches parent directories)
 - Configurable logging with `--log-level` and `--log-file` options

@@ -44,6 +44,8 @@ module Refined
             handle_did_open(message)
           when "textDocument/didChange"
             handle_did_change(message)
+          when "textDocument/didSave"
+            handle_did_save(message)
           when "textDocument/didClose"
             handle_did_close(message)
           when "textDocument/hover"
@@ -124,6 +126,7 @@ module Refined
                 text_document_sync: Interface::TextDocumentSyncOptions.new(
                   change: Constant::TextDocumentSyncKind::INCREMENTAL,
                   open_close: true,
+                  save: Interface::SaveOptions.new(include_text: true),
                 ),
                 hover_provider: true,
                 completion_provider: Interface::CompletionOptions.new(
@@ -188,6 +191,13 @@ module Refined
 
           logger.debug { "didChange: uri=#{uri} version=#{version} changes=#{content_changes.size}" }
           store.change(uri: uri, content_changes: content_changes, version: version)
+        end
+
+        # @rbs message: lsp_message
+        # @rbs return: void
+        def handle_did_save(message)
+          uri = message[:params][:textDocument][:uri]
+          logger.debug { "didSave: uri=#{uri}" }
           typecheck_and_publish(uri)
         end
 

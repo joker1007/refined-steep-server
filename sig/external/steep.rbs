@@ -213,6 +213,11 @@ module LanguageServer
         def to_hash: () -> Hash[Symbol, untyped]
       end
 
+      class SaveOptions
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
       class CompletionOptions
         def initialize: (**untyped) -> void
         def to_hash: () -> Hash[Symbol, untyped]
