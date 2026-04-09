@@ -5,6 +5,8 @@ module Refined
   module Steep
     module Server
       class SteepState
+        # @rbs @buffered_changes: Hash[Pathname, Array[::Steep::Services::ContentChange]]
+
         attr_reader :project #: ::Steep::Project
         attr_reader :type_check_service #: ::Steep::Services::TypeCheckService
         attr_reader :assignment #: ::Steep::Services::PathAssignment
@@ -17,7 +19,7 @@ module Refined
           @project = load_project(steepfile_path)
           @type_check_service = ::Steep::Services::TypeCheckService.new(project: @project)
           @assignment = ::Steep::Services::PathAssignment.all
-          @buffered_changes = {} #: Hash[Pathname, Array[::Steep::Services::ContentChange]]
+          @buffered_changes = {}
         end
 
         # @rbs path: Pathname

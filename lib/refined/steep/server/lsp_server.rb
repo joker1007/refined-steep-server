@@ -11,15 +11,20 @@ module Refined
         attr_reader :store #: Store?
 
         # @rbs reader: IO?
+        # @rbs @last_signature_help_line: Integer?
+        # @rbs @last_signature_help_result: untyped
+        # @rbs @work_done_progress_supported: bool
+
+        # @rbs reader: IO?
         # @rbs writer: IO?
         # @rbs logger: Logger?
         # @rbs return: void
         def initialize(reader: nil, writer: nil, logger: nil)
           @steep_state = nil
           @store = nil
-          @last_signature_help_line = nil #: Integer?
-          @last_signature_help_result = nil #: untyped
-          @work_done_progress_supported = false #: bool
+          @last_signature_help_line = nil
+          @last_signature_help_result = nil
+          @work_done_progress_supported = false
           super(reader: reader, writer: writer, logger: logger)
         end
 
@@ -734,12 +739,15 @@ module Refined
 
         # WorkDoneProgress helper that wraps begin/report/end notifications
         class ProgressReporter
+          # @rbs @server: BaseServer
+          # @rbs @token: String
+
           # @rbs server: BaseServer
           # @rbs token: String
           # @rbs return: void
           def initialize(server, token)
-            @server = server #: BaseServer
-            @token = token #: String
+            @server = server
+            @token = token
           end
 
           # @rbs percentage: Integer

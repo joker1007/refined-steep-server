@@ -10,6 +10,16 @@ module Refined
       #   type lsp_message = Hash[Symbol, untyped]
 
       class BaseServer
+        # @rbs @reader: MessageReader
+        # @rbs @writer: MessageWriter
+        # @rbs @mutex: Mutex
+        # @rbs @incoming_queue: Thread::Queue
+        # @rbs @outgoing_queue: Thread::Queue
+        # @rbs @cancelled_requests: Array[Integer]
+        # @rbs @current_request_id: Integer
+        # @rbs @worker: Thread
+        # @rbs @outgoing_dispatcher: Thread
+
         attr_reader :logger #: Logger
 
         # @rbs reader: IO?
@@ -18,16 +28,16 @@ module Refined
         # @rbs return: void
         def initialize(reader: nil, writer: nil, logger: nil)
           @logger = logger || self.class.create_default_logger
-          @reader = MessageReader.new(reader || $stdin) #: MessageReader
-          @writer = MessageWriter.new(writer || $stdout) #: MessageWriter
-          @mutex = Mutex.new #: Mutex
-          @incoming_queue = Thread::Queue.new #: Thread::Queue
-          @outgoing_queue = Thread::Queue.new #: Thread::Queue
-          @cancelled_requests = [] #: Array[Integer]
-          @current_request_id = 1 #: Integer
+          @reader = MessageReader.new(reader || $stdin)
+          @writer = MessageWriter.new(writer || $stdout)
+          @mutex = Mutex.new
+          @incoming_queue = Thread::Queue.new
+          @outgoing_queue = Thread::Queue.new
+          @cancelled_requests = []
+          @current_request_id = 1
 
-          @worker = start_worker_thread #: Thread
-          @outgoing_dispatcher = start_outgoing_thread #: Thread
+          @worker = start_worker_thread
+          @outgoing_dispatcher = start_outgoing_thread
 
           Thread.main.priority = 1
         end

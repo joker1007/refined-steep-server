@@ -21,11 +21,14 @@ module Refined
           end
         end
 
+        # @rbs @steep_state: SteepState
+        # @rbs @documents: Hash[String, DocumentEntry]
+
         # @rbs steep_state: SteepState
         # @rbs return: void
         def initialize(steep_state)
-          @steep_state = steep_state #: SteepState
-          @documents = {} #: Hash[String, DocumentEntry]
+          @steep_state = steep_state
+          @documents = {}
         end
 
         # @rbs uri: String

@@ -7,10 +7,12 @@ module Refined
   module Steep
     module Server
       class MessageReader
+        # @rbs @io: IO
+
         # @rbs io: IO
         # @rbs return: void
         def initialize(io)
-          @io = io #: IO
+          @io = io
         end
 
         # @rbs &block: (Hash[Symbol, untyped]) -> void
@@ -29,10 +31,12 @@ module Refined
       end
 
       class MessageWriter
+        # @rbs @io: IO
+
         # @rbs io: IO
         # @rbs return: void
         def initialize(io)
-          @io = io #: IO
+          @io = io
         end
 
         # @rbs message: Hash[Symbol, untyped]

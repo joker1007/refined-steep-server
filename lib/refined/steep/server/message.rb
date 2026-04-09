@@ -73,12 +73,14 @@ module Refined
       end
 
       class Request < Message
+        # @rbs @id: Integer | String
+
         # @rbs id: Integer | String
         # @rbs method: String
         # @rbs params: untyped
         # @rbs return: void
         def initialize(id:, method:, params:)
-          @id = id #: Integer | String
+          @id = id
           super(method: method, params: params)
         end
 
@@ -95,6 +97,9 @@ module Refined
       end
 
       class ErrorResponse
+        # @rbs @id: Integer
+        # @rbs @data: Hash[Symbol, untyped]?
+
         attr_reader :message #: String
         attr_reader :code #: Integer
 
@@ -104,10 +109,10 @@ module Refined
         # @rbs data: Hash[Symbol, untyped]?
         # @rbs return: void
         def initialize(id:, code:, message:, data: nil)
-          @id = id #: Integer
+          @id = id
           @code = code
           @message = message
-          @data = data #: Hash[Symbol, untyped]?
+          @data = data
         end
 
         # @rbs return: Hash[Symbol, untyped]
