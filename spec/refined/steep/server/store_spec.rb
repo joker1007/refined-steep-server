@@ -1,30 +1,14 @@
 # frozen_string_literal: true
 
 RSpec.describe Refined::Steep::Server::Store do
-  let(:steepfile_path) { Pathname(File.expand_path("../../../fixtures/Steepfile", __dir__)) }
-  let(:base_dir) { steepfile_path.parent }
-
-  before do
-    FileUtils.mkdir_p(base_dir / "lib")
-    FileUtils.mkdir_p(base_dir / "sig")
-    steepfile_path.write(<<~RUBY)
-      target :lib do
-        check "lib"
-        signature "sig"
-      end
-    RUBY
-  end
-
-  after do
-    FileUtils.rm_rf(base_dir)
-  end
+  include_context "steep_fixture"
 
   let(:steep_state) { Refined::Steep::Server::SteepState.new(steepfile_path: steepfile_path) }
   let(:store) { described_class.new(steep_state) }
 
   describe "#open" do
     it "stores the document" do
-      uri = "file://#{base_dir}/lib/test.rb"
+      uri = "file://#{fixtures_dir}/lib/test.rb"
       store.open(uri: uri, text: "class Foo; end", version: 1)
 
       entry = store.get(uri)
@@ -34,7 +18,7 @@ RSpec.describe Refined::Steep::Server::Store do
     end
 
     it "pushes changes to steep_state" do
-      uri = "file://#{base_dir}/lib/test.rb"
+      uri = "file://#{fixtures_dir}/lib/test.rb"
       store.open(uri: uri, text: "class Foo; end", version: 1)
 
       changes = steep_state.flush_changes
@@ -44,9 +28,9 @@ RSpec.describe Refined::Steep::Server::Store do
 
   describe "#change" do
     it "pushes incremental changes to steep_state" do
-      uri = "file://#{base_dir}/lib/test.rb"
+      uri = "file://#{fixtures_dir}/lib/test.rb"
       store.open(uri: uri, text: "class Foo; end", version: 1)
-      steep_state.flush_changes # clear initial open
+      steep_state.flush_changes
 
       store.change(
         uri: uri,
@@ -70,7 +54,7 @@ RSpec.describe Refined::Steep::Server::Store do
     end
 
     it "pushes full text changes to steep_state" do
-      uri = "file://#{base_dir}/lib/test.rb"
+      uri = "file://#{fixtures_dir}/lib/test.rb"
       store.open(uri: uri, text: "class Foo; end", version: 1)
       steep_state.flush_changes
 
@@ -88,7 +72,7 @@ RSpec.describe Refined::Steep::Server::Store do
 
   describe "#close" do
     it "removes the document" do
-      uri = "file://#{base_dir}/lib/test.rb"
+      uri = "file://#{fixtures_dir}/lib/test.rb"
       store.open(uri: uri, text: "class Foo; end", version: 1)
       store.close(uri: uri)
 

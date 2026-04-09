@@ -1,22 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Refined::Steep::Server::SteepState do
-  let(:steepfile_path) { Pathname(File.expand_path("../../../fixtures/Steepfile", __dir__)) }
-
-  before do
-    FileUtils.mkdir_p(steepfile_path.parent / "lib")
-    FileUtils.mkdir_p(steepfile_path.parent / "sig")
-    steepfile_path.write(<<~RUBY)
-      target :lib do
-        check "lib"
-        signature "sig"
-      end
-    RUBY
-  end
-
-  after do
-    FileUtils.rm_rf(steepfile_path.parent)
-  end
+  include_context "steep_fixture"
 
   describe "#initialize" do
     it "loads the project from Steepfile" do

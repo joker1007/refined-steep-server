@@ -1,56 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe Refined::Steep::Server::LspServer do
-  let(:fixtures_dir) { Pathname(File.expand_path("../../../fixtures", __dir__)) }
-  let(:steepfile_path) { fixtures_dir / "Steepfile" }
-  let(:lib_dir) { fixtures_dir / "lib" }
-  let(:sig_dir) { fixtures_dir / "sig" }
-  let(:logger) { Refined::Steep::Server::BaseServer.create_default_logger(level: Logger::DEBUG, io: StringIO.new) }
-
-  before do
-    FileUtils.mkdir_p(lib_dir)
-    FileUtils.mkdir_p(sig_dir)
-    steepfile_path.write(<<~RUBY)
-      target :lib do
-        check "lib"
-        signature "sig"
-      end
-    RUBY
-  end
-
-  after do
-    FileUtils.rm_rf(fixtures_dir)
-  end
-
-  def encode_message(hash)
-    json = JSON.generate(hash)
-    "Content-Length: #{json.bytesize}\r\n\r\n#{json}"
-  end
-
-  def create_server(messages)
-    raw = messages.map { |m| encode_message(m) }.join
-    reader = StringIO.new(raw)
-    writer = StringIO.new
-
-    server = described_class.new(reader: reader, writer: writer, logger: logger)
-    [server, writer]
-  end
-
-  def parse_responses(writer)
-    output = writer.string
-    responses = []
-    scanner = StringIO.new(output)
-    while (headers = scanner.gets("\r\n\r\n"))
-      content_length = headers[/Content-Length: (\d+)/i, 1]&.to_i
-      next unless content_length
-
-      raw = scanner.read(content_length)
-      next unless raw
-
-      responses << JSON.parse(raw, symbolize_names: true)
-    end
-    responses
-  end
+  include_context "lsp_helpers"
 
   describe "initialize request" do
     it "returns server capabilities" do
@@ -91,13 +42,7 @@ RSpec.describe Refined::Steep::Server::LspServer do
   describe "textDocument/didOpen and didClose" do
     it "tracks document lifecycle" do
       uri = "file://#{lib_dir}/test.rb"
-      messages = [
-        {
-          id: 1,
-          method: "initialize",
-          params: { rootUri: "file://#{fixtures_dir}", capabilities: {} },
-        },
-        { method: "initialized", params: {} },
+      messages = init_messages([
         {
           method: "textDocument/didOpen",
           params: {
@@ -108,13 +53,12 @@ RSpec.describe Refined::Steep::Server::LspServer do
           method: "textDocument/didClose",
           params: { textDocument: { uri: uri } },
         },
-      ]
+      ])
 
       server, = create_server(messages)
       server.start
       sleep 0.2
 
-      # After close, document should be removed
       expect(server.store&.get(uri)).to be_nil
     end
   end
@@ -122,13 +66,7 @@ RSpec.describe Refined::Steep::Server::LspServer do
   describe "textDocument/didChange" do
     it "applies changes through store" do
       uri = "file://#{lib_dir}/test.rb"
-      messages = [
-        {
-          id: 1,
-          method: "initialize",
-          params: { rootUri: "file://#{fixtures_dir}", capabilities: {} },
-        },
-        { method: "initialized", params: {} },
+      messages = init_messages([
         {
           method: "textDocument/didOpen",
           params: {
@@ -142,7 +80,7 @@ RSpec.describe Refined::Steep::Server::LspServer do
             contentChanges: [{ text: "class Bar; end" }],
           },
         },
-      ]
+      ])
 
       server, = create_server(messages)
       server.start
@@ -232,54 +170,34 @@ RSpec.describe Refined::Steep::Server::LspServer do
       (sig_dir / "greeter.rbs").write(rbs_content)
     end
 
-    def build_messages(*extra)
-      uri = "file://#{lib_dir}/greeter.rb"
-      [
-        {
-          id: 1,
-          method: "initialize",
-          params: { rootUri: "file://#{fixtures_dir}", capabilities: {} },
-        },
-        { method: "initialized", params: {} },
+    def open_and_request(id:, method:, uri:, text:, request_params:)
+      init_messages([
         {
           method: "textDocument/didOpen",
           params: {
-            textDocument: { uri: uri, languageId: "ruby", version: 1, text: source_code },
+            textDocument: { uri: uri, languageId: "ruby", version: 1, text: text },
           },
         },
-        *extra,
-      ]
+        { id: id, method: method, params: request_params },
+      ])
     end
 
     describe "textDocument/completion" do
       it "returns completion items for method calls" do
         uri = "file://#{lib_dir}/greeter.rb"
-        # Request completion after "self." inside the greet method
-        # Line 8 (0-indexed) is `"Hello, " + name`, let's complete at a position where `self.` is typed
         completion_source = source_code.sub("\"Hello, \" + name", "self.")
-        messages = [
-          {
-            id: 1,
-            method: "initialize",
-            params: { rootUri: "file://#{fixtures_dir}", capabilities: {} },
+
+        messages = open_and_request(
+          id: 10,
+          method: "textDocument/completion",
+          uri: uri,
+          text: completion_source,
+          request_params: {
+            textDocument: { uri: uri },
+            position: { line: 8, character: 9 },
+            context: { triggerKind: 2, triggerCharacter: "." },
           },
-          { method: "initialized", params: {} },
-          {
-            method: "textDocument/didOpen",
-            params: {
-              textDocument: { uri: uri, languageId: "ruby", version: 1, text: completion_source },
-            },
-          },
-          {
-            id: 10,
-            method: "textDocument/completion",
-            params: {
-              textDocument: { uri: uri },
-              position: { line: 8, character: 9 },
-              context: { triggerKind: 2, triggerCharacter: "." },
-            },
-          },
-        ]
+        )
 
         server, writer = create_server(messages)
         server.start
@@ -294,26 +212,23 @@ RSpec.describe Refined::Steep::Server::LspServer do
         result = completion_response[:result]
         expect(result).to include(:items)
 
-        items = result[:items]
-        expect(items).to be_an(Array)
-
-        # Should include methods from Greeter class
-        labels = items.map { |item| item[:label] }
+        labels = result[:items].map { |item| item[:label] }
         expect(labels).to include("name")
         expect(labels).to include("greet")
       end
 
       it "returns empty completion list when no completions available" do
         uri = "file://#{lib_dir}/greeter.rb"
-        messages = build_messages(
-          {
-            id: 10,
-            method: "textDocument/completion",
-            params: {
-              textDocument: { uri: uri },
-              position: { line: 0, character: 0 },
-              context: { triggerKind: 1 },
-            },
+
+        messages = open_and_request(
+          id: 10,
+          method: "textDocument/completion",
+          uri: uri,
+          text: source_code,
+          request_params: {
+            textDocument: { uri: uri },
+            position: { line: 0, character: 0 },
+            context: { triggerKind: 1 },
           },
         )
 
@@ -334,13 +249,8 @@ RSpec.describe Refined::Steep::Server::LspServer do
 
       it "returns completion response without error for unknown file" do
         unknown_uri = "file://#{lib_dir}/unknown.rb"
-        messages = [
-          {
-            id: 1,
-            method: "initialize",
-            params: { rootUri: "file://#{fixtures_dir}", capabilities: {} },
-          },
-          { method: "initialized", params: {} },
+
+        messages = init_messages([
           {
             id: 10,
             method: "textDocument/completion",
@@ -350,7 +260,7 @@ RSpec.describe Refined::Steep::Server::LspServer do
               context: { triggerKind: 1 },
             },
           },
-        ]
+        ])
 
         server, writer = create_server(messages)
         server.start
@@ -360,7 +270,6 @@ RSpec.describe Refined::Steep::Server::LspServer do
         completion_response = responses.find { |r| r[:id] == 10 }
 
         expect(completion_response).not_to be_nil
-        # Should return empty result, not an error
         if completion_response[:result]
           expect(completion_response[:result][:items]).to be_an(Array)
         else
@@ -372,15 +281,15 @@ RSpec.describe Refined::Steep::Server::LspServer do
     describe "textDocument/hover" do
       it "returns hover information for typed expressions" do
         uri = "file://#{lib_dir}/greeter.rb"
-        messages = build_messages(
-          {
-            id: 10,
-            method: "textDocument/hover",
-            params: {
-              textDocument: { uri: uri },
-              # hover over `name` in `def initialize(name)`
-              position: { line: 3, character: 10 },
-            },
+
+        messages = open_and_request(
+          id: 10,
+          method: "textDocument/hover",
+          uri: uri,
+          text: source_code,
+          request_params: {
+            textDocument: { uri: uri },
+            position: { line: 3, character: 10 },
           },
         )
 
@@ -393,7 +302,6 @@ RSpec.describe Refined::Steep::Server::LspServer do
 
         expect(hover_response).not_to be_nil
         expect(hover_response[:error]).to be_nil
-        # May or may not have content depending on Steep's analysis
       end
     end
   end
