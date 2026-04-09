@@ -1,0 +1,353 @@
+module Steep
+  module PathHelper
+    def self.to_pathname: (String uri) -> Pathname?
+    def self.to_uri: (Pathname path) -> URI::Generic
+  end
+
+  module LSPFormatter
+    def self.format_hover_content: (untyped content) -> untyped
+  end
+
+  class Source
+    def self.parse: (String content, path: Pathname, factory: untyped) -> Source
+    def without_unrelated_defs: (line: Integer, column: Integer) -> Source
+  end
+
+  class Typing
+    class UnknownNodeError < StandardError
+    end
+  end
+
+  class Project
+    attr_reader targets: Array[Target]
+    attr_reader steepfile_path: Pathname
+    attr_reader base_dir: Pathname
+    attr_accessor global_options: untyped
+
+    def initialize: (steepfile_path: Pathname, ?base_dir: Pathname?) -> void
+    def relative_path: (Pathname path) -> Pathname
+    def absolute_path: (Pathname path) -> Pathname
+    def target_for_source_path: (Pathname path) -> Target?
+    def target_for_signature_path: (Pathname path) -> Target?
+    def target_for_inline_source_path: (Pathname path) -> Target?
+
+    class Target
+      attr_reader name: Symbol
+      def possible_source_file?: (Pathname path) -> untyped
+      def code_diagnostics_config: () -> Hash[untyped, untyped]?
+      def new_env_loader: () -> untyped
+      def implicitly_returns_nil: () -> bool
+    end
+
+    class DSL
+      def self.parse: (Project project, String code, ?filename: String) -> void
+    end
+  end
+
+  module Services
+    class TypeCheckService
+      attr_reader project: Project
+      attr_reader source_files: Hash[Pathname, SourceFile]
+      attr_reader signature_services: Hash[Symbol, SignatureService]
+      attr_reader signature_validation_diagnostics: untyped
+
+      def initialize: (project: Project) -> void
+      def update: (changes: Hash[Pathname, Array[ContentChange]]) -> void
+
+      class SourceFile
+        attr_reader path: Pathname
+        attr_reader content: String
+        attr_reader node: untyped
+        attr_reader typing: untyped
+        attr_reader errors: Array[untyped]?
+        attr_reader ignores: untyped
+
+        def diagnostics: () -> Array[untyped]?
+      end
+    end
+
+    class SignatureService
+      def current_subtyping: () -> untyped
+      def latest_rbs_index: () -> untyped
+      def latest_env: () -> untyped
+      def env_rbs_paths: () -> Set[Pathname]
+    end
+
+    class ContentChange
+      attr_reader range: [Position, Position]?
+      attr_reader text: String
+
+      def initialize: (?range: [Position, Position]?, text: String) -> void
+
+      class Position
+        attr_reader line: Integer
+        attr_reader column: Integer
+
+        def initialize: (line: Integer, column: Integer) -> void
+      end
+    end
+
+    class PathAssignment
+      def self.all: () -> PathAssignment
+    end
+
+    class FileLoader
+      def initialize: (base_dir: Pathname) -> void
+      def each_path_in_target: (Project::Target target, ?Array[String] command_line_args) { (Pathname) -> void } -> void
+    end
+
+    module HoverProvider
+      def self.content_for: (service: TypeCheckService, path: Pathname, line: Integer, column: Integer) -> untyped
+    end
+
+    class GotoService
+      def initialize: (type_check: TypeCheckService, assignment: PathAssignment) -> void
+      def definition: (path: Pathname, line: Integer, column: Integer) -> Array[untyped]
+      def implementation: (path: Pathname, line: Integer, column: Integer) -> Array[untyped]
+      def type_definition: (path: Pathname, line: Integer, column: Integer) -> Array[untyped]
+    end
+
+    class SignatureHelpProvider
+      def initialize: (source: Source, subtyping: untyped) -> void
+      def run: (line: Integer, column: Integer) -> [Array[untyped], Integer]?
+    end
+
+    module CompletionProvider
+      class Ruby
+        def initialize: (source_text: String, path: Pathname, subtyping: untyped) -> void
+        def run: (line: Integer, column: Integer) -> Array[untyped]
+        def run_at_comment: (line: Integer, column: Integer) -> [Integer, Array[untyped]]?
+      end
+
+      class RBS
+        def initialize: (Pathname path, SignatureService sig_service) -> void
+        def run: (Integer line, Integer column) -> [Integer, Array[[untyped, untyped]]]
+      end
+
+      class LocalVariableItem
+        attr_reader identifier: Symbol
+        attr_reader type: untyped
+        attr_reader range: untyped
+      end
+
+      class ConstantItem
+        attr_reader identifier: Symbol
+        attr_reader range: untyped
+        def class?: () -> bool
+        def module?: () -> bool
+      end
+
+      class SimpleMethodNameItem
+        attr_reader identifier: Symbol
+        attr_reader method_name: untyped
+        attr_reader range: untyped
+        attr_reader deprecated: bool
+      end
+
+      class ComplexMethodNameItem
+        attr_reader identifier: Symbol
+        attr_reader method_names: Array[untyped]
+        attr_reader range: untyped
+      end
+
+      class GeneratedMethodNameItem
+        attr_reader identifier: Symbol
+        attr_reader range: untyped
+      end
+
+      class InstanceVariableItem
+        attr_reader identifier: Symbol
+        attr_reader type: untyped
+        attr_reader range: untyped
+      end
+
+      class KeywordArgumentItem
+        attr_reader identifier: Symbol
+        attr_reader range: untyped
+      end
+
+      class TypeNameItem
+        attr_reader absolute_type_name: untyped
+        attr_reader relative_type_name: untyped
+        attr_reader range: untyped
+        attr_reader env: untyped
+      end
+
+      class TextItem
+        attr_reader label: String
+        attr_reader text: String
+        attr_reader help_text: String?
+        attr_reader range: untyped
+      end
+    end
+  end
+
+  module Diagnostic
+    class LSPFormatter
+      def initialize: (?Hash[untyped, untyped]? config, ?default_severity: Symbol) -> void
+      def format: (untyped diagnostic) -> untyped
+    end
+  end
+
+  module Index
+    class SignatureSymbolProvider
+      attr_reader indexes: Hash[untyped, untyped]
+
+      def initialize: (project: Project, assignment: Services::PathAssignment) -> void
+      def query_symbol: (String query) -> Array[untyped]
+    end
+  end
+end
+
+module LanguageServer
+  module Protocol
+    module Interface
+      # All interface classes return hash-like objects
+      class InitializeResult
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class ServerCapabilities
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class TextDocumentSyncOptions
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class CompletionOptions
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class SignatureHelpOptions
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class Hover
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class MarkupContent
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class Range
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class Position
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class CompletionList
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class CompletionItem
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class CompletionItemLabelDetails
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class TextEdit
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class SignatureHelp
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class SignatureInformation
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class ParameterInformation
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class SymbolInformation
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class ShowMessageParams
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class LogMessageParams
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class PublishDiagnosticsParams
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+    end
+
+    module Constant
+      module TextDocumentSyncKind
+        INCREMENTAL: Integer
+      end
+
+      module MessageType
+        LOG: Integer
+        INFO: Integer
+        WARNING: Integer
+        ERROR: Integer
+      end
+
+      module ErrorCodes
+        REQUEST_CANCELLED: Integer
+        INTERNAL_ERROR: Integer
+        REQUEST_FAILED: Integer
+      end
+
+      module CompletionItemKind
+        TEXT: Integer
+        FUNCTION: Integer
+        VARIABLE: Integer
+        CLASS: Integer
+        INTERFACE: Integer
+        FIELD: Integer
+        CONSTANT: Integer
+        SNIPPET: Integer
+      end
+
+      module InsertTextFormat
+        SNIPPET: Integer
+      end
+
+      module MarkupKind
+        MARKDOWN: String
+      end
+    end
+
+    module Transport
+    end
+  end
+end
+
+module Parser
+  class SyntaxError < StandardError
+  end
+end

@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "refined/steep/server"
+require "refined/steep/server/lsp_server"
+
+$stdin.sync = true
+$stdout.sync = true
+$stderr.sync = true
+$stdin.binmode
+$stdout.binmode
+$stderr.binmode
+
+server = Refined::Steep::Server::LspServer.new
+server.start
