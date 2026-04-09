@@ -9,3 +9,10 @@
 /sig/generated/
 /.gem_rbs_collection/
 /rbs_collection.lock.yaml
+
+.envrc
+.nvim.lua
+
+.claude/*
+!.claude/commands
+!.claude/skills

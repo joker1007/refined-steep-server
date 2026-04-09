@@ -12,19 +12,25 @@ module Refined
 
         # @rbs reader: IO?
         # @rbs writer: IO?
+        # @rbs logger: Logger?
         # @rbs return: void
-        def initialize(reader: nil, writer: nil)
+        def initialize(reader: nil, writer: nil, logger: nil)
           @steep_state = nil
           @store = nil
           @last_signature_help_line = nil #: Integer?
           @last_signature_help_result = nil #: untyped
-          super(reader: reader, writer: writer)
+          @work_done_progress_supported = false #: bool
+          super(reader: reader, writer: writer, logger: logger)
         end
 
         # @rbs message: lsp_message
         # @rbs return: void
         def process_message(message)
-          case message[:method]
+          method = message[:method]
+          id = message[:id]
+          logger.debug { "Processing: method=#{method} id=#{id}" }
+
+          case method
           when "initialize"
             handle_initialize(message)
           when "initialized"
@@ -51,14 +57,15 @@ module Refined
             handle_workspace_symbol(message)
           when "$/cancelRequest"
             handle_cancel_request(message)
+          else
+            logger.debug { "Unhandled method: #{method}" }
           end
         rescue => e
-          $stderr.puts "Error processing #{message[:method]}: #{e.message}"
-          $stderr.puts e.backtrace&.first(10)&.join("\n")
+          logger.error { "Error processing #{method}: #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}" }
 
-          if message[:id]
+          if id
             send_message(ErrorResponse.new(
-              id: message[:id],
+              id: id,
               code: Constant::ErrorCodes::INTERNAL_ERROR,
               message: e.message || "Internal error",
             ))
@@ -86,12 +93,23 @@ module Refined
             Pathname.pwd
           end
 
+          @work_done_progress_supported = message.dig(:params, :capabilities, :window, :workDoneProgress) ? true : false
+          logger.info { "Initializing: workspace=#{workspace_path} workDoneProgress=#{@work_done_progress_supported}" }
+
           steepfile_path = find_steepfile(workspace_path)
 
           if steepfile_path
-            state = SteepState.new(steepfile_path: steepfile_path)
-            @steep_state = state
-            @store = Store.new(state)
+            logger.info { "Found Steepfile: #{steepfile_path}" }
+            begin
+              state = SteepState.new(steepfile_path: steepfile_path)
+              @steep_state = state
+              @store = Store.new(state)
+              logger.info { "Steep initialized successfully with #{state.project.targets.size} target(s)" }
+            rescue => e
+              logger.error { "Failed to initialize Steep: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}" }
+            end
+          else
+            logger.warn { "No Steepfile found in #{workspace_path}" }
           end
 
           send_message(Result.new(
@@ -120,6 +138,8 @@ module Refined
               },
             ),
           ))
+
+          logger.debug { "Sent initialize response" }
         end
 
         # @rbs message: lsp_message
@@ -127,7 +147,11 @@ module Refined
         def handle_initialized(message)
           return unless @steep_state
 
+          logger.info { "Loading project files..." }
           load_project_files
+          logger.info { "Project files loaded" }
+        rescue => e
+          logger.error { "Failed to load project files: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}" }
         end
 
         # @rbs message: lsp_message
@@ -141,7 +165,9 @@ module Refined
           text = params[:textDocument][:text]
           version = params[:textDocument][:version]
 
+          logger.debug { "didOpen: uri=#{uri} version=#{version} size=#{text.bytesize}" }
           store.open(uri: uri, text: text, version: version)
+          typecheck_and_publish(uri)
         end
 
         # @rbs message: lsp_message
@@ -155,7 +181,9 @@ module Refined
           version = params[:textDocument][:version]
           content_changes = params[:contentChanges]
 
+          logger.debug { "didChange: uri=#{uri} version=#{version} changes=#{content_changes.size}" }
           store.change(uri: uri, content_changes: content_changes, version: version)
+          typecheck_and_publish(uri)
         end
 
         # @rbs message: lsp_message
@@ -165,6 +193,7 @@ module Refined
           return unless store
 
           uri = message[:params][:textDocument][:uri]
+          logger.debug { "didClose: uri=#{uri}" }
           store.close(uri: uri)
         end
 
@@ -173,6 +202,7 @@ module Refined
         def handle_hover(message)
           state = @steep_state
           unless state
+            logger.debug { "hover: no steep_state, returning empty" }
             send_empty_response(message[:id])
             return
           end
@@ -188,6 +218,8 @@ module Refined
 
           line = params[:position][:line] + 1
           column = params[:position][:character]
+
+          logger.debug { "hover: path=#{path} line=#{line} column=#{column}" }
 
           content = ::Steep::Services::HoverProvider.content_for(
             service: state.type_check_service,
@@ -212,16 +244,19 @@ module Refined
             hover = Interface::Hover.new(
               contents: Interface::MarkupContent.new(
                 kind: "markdown",
-                value: ::Steep::LSPFormatter.format_hover_content(content).to_s,
+                value: ::Steep::Server::LSPFormatter.format_hover_content(content).to_s,
               ),
               range: range,
             )
 
+            logger.debug { "hover: returning content" }
             send_message(Result.new(id: message[:id], response: hover))
           else
+            logger.debug { "hover: no content found" }
             send_empty_response(message[:id])
           end
         rescue ::Steep::Typing::UnknownNodeError
+          logger.debug { "hover: UnknownNodeError, returning empty" }
           send_empty_response(message[:id])
         end
 
@@ -247,8 +282,11 @@ module Refined
           column = params[:position][:character]
           trigger = params.dig(:context, :triggerCharacter)
 
+          logger.debug { "completion: path=#{path} line=#{line} column=#{column} trigger=#{trigger.inspect}" }
+
           items = complete_items(state, path, line, column, trigger)
 
+          logger.debug { "completion: returning #{items&.size || 0} items" }
           send_message(Result.new(
             id: message[:id],
             response: Interface::CompletionList.new(
@@ -279,7 +317,11 @@ module Refined
           line = params[:position][:line] + 1
           column = params[:position][:character]
 
+          logger.debug { "signatureHelp: path=#{path} line=#{line} column=#{column}" }
+
           result = compute_signature_help(state, path, line, column)
+
+          logger.debug { "signatureHelp: result=#{result ? 'found' : 'nil'}" }
           send_message(Result.new(id: message[:id], response: result))
         end
 
@@ -305,6 +347,8 @@ module Refined
 
           line = params[:position][:line] + 1
           column = params[:position][:character]
+
+          logger.debug { "goto(#{kind}): path=#{path} line=#{line} column=#{column}" }
 
           goto_service = ::Steep::Services::GotoService.new(
             type_check: state.type_check_service,
@@ -338,6 +382,7 @@ module Refined
             }
           end
 
+          logger.debug { "goto(#{kind}): returning #{result.size} location(s)" }
           send_message(Result.new(id: message[:id], response: result))
         end
 
@@ -351,6 +396,7 @@ module Refined
           end
 
           query = message[:params][:query] || ""
+          logger.debug { "workspaceSymbol: query=#{query.inspect}" }
 
           provider = ::Steep::Index::SignatureSymbolProvider.new(
             project: state.project,
@@ -381,6 +427,7 @@ module Refined
             )
           end
 
+          logger.debug { "workspaceSymbol: returning #{result.size} symbol(s)" }
           send_message(Result.new(id: message[:id], response: result))
         end
 
@@ -388,6 +435,7 @@ module Refined
         # @rbs return: void
         def handle_cancel_request(message)
           id = message[:params][:id]
+          logger.debug { "cancelRequest: id=#{id}" }
           @cancelled_requests << id if id
         end
 
@@ -396,8 +444,11 @@ module Refined
           state = @steep_state
           return unless state
 
+          progress = start_progress("Loading project")
+
           loader = ::Steep::Services::FileLoader.new(base_dir: state.project.base_dir)
 
+          file_count = 0
           state.project.targets.each do |target|
             loader.each_path_in_target(target) do |path|
               absolute_path = state.project.absolute_path(path)
@@ -407,11 +458,19 @@ module Refined
               state.push_changes(path, [
                 ::Steep::Services::ContentChange.new(text: content),
               ])
+              file_count += 1
             end
           end
 
+          logger.info { "Loaded #{file_count} file(s) from project" }
+
+          progress&.report(50, "Applying changes...")
           state.apply_changes
+          logger.info { "Applied changes, publishing diagnostics..." }
+          progress&.report(80, "Publishing diagnostics...")
           publish_diagnostics
+          logger.info { "Diagnostics published" }
+          progress&.done
         end
 
         # @rbs return: void
@@ -421,6 +480,7 @@ module Refined
 
           formatter = ::Steep::Diagnostic::LSPFormatter.new(state.project.targets.first&.code_diagnostics_config || {})
 
+          diag_count = 0
           state.project.targets.each do |target|
             state.type_check_service.source_files.each_value do |file|
               next unless target.possible_source_file?(file.path)
@@ -434,8 +494,70 @@ module Refined
               uri = ::Steep::PathHelper.to_uri(absolute_path).to_s
 
               send_message(Notification.publish_diagnostics(uri, lsp_diagnostics))
+              diag_count += lsp_diagnostics.size
             end
           end
+
+          logger.debug { "Published #{diag_count} diagnostic(s)" }
+        end
+
+        # @rbs uri: String
+        # @rbs return: void
+        def typecheck_and_publish(uri)
+          state = @steep_state
+          return unless state
+
+          state.apply_changes
+
+          path = uri_to_relative_path(state, uri)
+          return unless path
+
+          progress = start_progress("Type checking")
+
+          target = state.project.target_for_source_path(path) ||
+                   state.project.target_for_inline_source_path(path)
+
+          if target
+            logger.debug { "Type checking source: path=#{path} target=#{target.name}" }
+            progress&.report(50, path.to_s)
+            diagnostics = state.type_check_service.typecheck_source(path: path, target: target)
+            publish_file_diagnostics(state, path, diagnostics)
+          end
+
+          sig_target = state.project.target_for_signature_path(path)
+          if sig_target
+            logger.debug { "Validating signature: path=#{path} target=#{sig_target.name}" }
+            progress&.report(80, path.to_s)
+            diagnostics = state.type_check_service.validate_signature(path: path, target: sig_target)
+            publish_file_diagnostics(state, path, diagnostics)
+          end
+
+          progress&.done
+        rescue => e
+          logger.error { "Type check failed for #{uri}: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}" }
+          progress&.done
+        end
+
+        # @rbs state: SteepState
+        # @rbs path: Pathname
+        # @rbs diagnostics: Array[untyped]?
+        # @rbs return: void
+        def publish_file_diagnostics(state, path, diagnostics)
+          return unless diagnostics
+
+          formatter = ::Steep::Diagnostic::LSPFormatter.new(
+            state.project.targets.first&.code_diagnostics_config || {},
+          )
+
+          lsp_diagnostics = diagnostics.filter_map do |diag|
+            formatter.format(diag)
+          end
+
+          absolute_path = state.project.absolute_path(path)
+          file_uri = ::Steep::PathHelper.to_uri(absolute_path).to_s
+
+          logger.debug { "Publishing #{lsp_diagnostics.size} diagnostic(s) for #{path}" }
+          send_message(Notification.publish_diagnostics(file_uri, lsp_diagnostics))
         end
 
         # @rbs state: SteepState
@@ -639,6 +761,72 @@ module Refined
           return unless path
 
           state.project.relative_path(path)
+        end
+
+        # WorkDoneProgress helper that wraps begin/report/end notifications
+        class ProgressReporter
+          # @rbs server: BaseServer
+          # @rbs token: String
+          # @rbs return: void
+          def initialize(server, token)
+            @server = server #: BaseServer
+            @token = token #: String
+          end
+
+          # @rbs percentage: Integer
+          # @rbs message: String?
+          # @rbs return: void
+          def report(percentage, message = nil)
+            value = { kind: "report", percentage: percentage } #: Hash[Symbol, untyped]
+            value[:message] = message if message
+            @server.send(:send_message, Notification.new(
+              method: "$/progress",
+              params: Interface::ProgressParams.new(token: @token, value: value),
+            ))
+          end
+
+          # @rbs message: String?
+          # @rbs return: void
+          def done(message = nil)
+            value = { kind: "end" } #: Hash[Symbol, untyped]
+            value[:message] = message if message
+            @server.send(:send_message, Notification.new(
+              method: "$/progress",
+              params: Interface::ProgressParams.new(token: @token, value: value),
+            ))
+          end
+        end
+
+        # @rbs title: String
+        # @rbs return: ProgressReporter?
+        def start_progress(title)
+          return nil unless @work_done_progress_supported
+
+          token = SecureRandom.uuid
+          logger.debug { "Starting progress: token=#{token} title=#{title}" }
+
+          # Create progress token
+          send_message(Request.new(
+            id: @current_request_id,
+            method: "window/workDoneProgress/create",
+            params: Interface::WorkDoneProgressCreateParams.new(token: token),
+          ))
+
+          # Send begin notification
+          send_message(Notification.new(
+            method: "$/progress",
+            params: Interface::ProgressParams.new(
+              token: token,
+              value: Interface::WorkDoneProgressBegin.new(
+                kind: "begin",
+                title: title,
+                cancellable: false,
+                percentage: 0,
+              ),
+            ),
+          ))
+
+          ProgressReporter.new(self, token)
         end
 
         # @rbs workspace_path: Pathname?

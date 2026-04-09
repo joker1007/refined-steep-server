@@ -1,8 +1,26 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "optparse"
+require "logger"
 require "refined/steep/server"
 require "refined/steep/server/lsp_server"
+
+log_level = Logger::WARN
+log_output = $stderr
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: refined-steep-server [options]"
+
+  opts.on("--log-level LEVEL", %w[debug info warn error fatal], "Set log level (debug, info, warn, error, fatal)") do |level|
+    log_level = Logger.const_get(level.upcase)
+  end
+
+  opts.on("--log-file PATH", "Log to file instead of stderr") do |path|
+    log_output = File.open(path, "a")
+    log_output.sync = true
+  end
+end.parse!
 
 $stdin.sync = true
 $stdout.sync = true
@@ -11,5 +29,8 @@ $stdin.binmode
 $stdout.binmode
 $stderr.binmode
 
-server = Refined::Steep::Server::LspServer.new
+logger = Refined::Steep::Server::BaseServer.create_default_logger(level: log_level, io: log_output)
+logger.info { "Starting refined-steep-server v#{Refined::Steep::Server::VERSION} (log_level=#{Logger::SEV_LABEL[log_level]})" }
+
+server = Refined::Steep::Server::LspServer.new(logger: logger)
 server.start

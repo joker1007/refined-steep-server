@@ -4,8 +4,10 @@ module Steep
     def self.to_uri: (Pathname path) -> URI::Generic
   end
 
-  module LSPFormatter
-    def self.format_hover_content: (untyped content) -> untyped
+  module Server
+    module LSPFormatter
+      def self.format_hover_content: (untyped content) -> untyped
+    end
   end
 
   class Source
@@ -53,6 +55,8 @@ module Steep
 
       def initialize: (project: Project) -> void
       def update: (changes: Hash[Pathname, Array[ContentChange]]) -> void
+      def typecheck_source: (path: Pathname, target: Project::Target) -> Array[untyped]?
+      def validate_signature: (path: Pathname, target: Project::Target) -> Array[untyped]?
 
       class SourceFile
         attr_reader path: Pathname
@@ -299,6 +303,21 @@ module LanguageServer
       end
 
       class PublishDiagnosticsParams
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class ProgressParams
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class WorkDoneProgressBegin
+        def initialize: (**untyped) -> void
+        def to_hash: () -> Hash[Symbol, untyped]
+      end
+
+      class WorkDoneProgressCreateParams
         def initialize: (**untyped) -> void
         def to_hash: () -> Hash[Symbol, untyped]
       end
