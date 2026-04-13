@@ -1,5 +1,7 @@
 # refined-steep-server
 
+[![CI](https://github.com/joker1007/refined-steep-server/actions/workflows/ci.yml/badge.svg)](https://github.com/joker1007/refined-steep-server/actions/workflows/ci.yml)
+
 Most of this project is written by Claude Code.
 
 A language server for Ruby type checking that uses [Steep](https://github.com/soutaro/steep) as a library. It provides the same type checking features as Steep's built-in language server, reimplemented with a single-process multi-threaded architecture inspired by [ruby-lsp](https://github.com/Shopify/ruby-lsp). Designed with Neovim compatibility in mind.
