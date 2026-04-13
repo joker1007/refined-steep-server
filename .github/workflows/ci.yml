@@ -19,7 +19,14 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
       - name: Run rspec
-        run: bundle exec rspec
+        run: bundle exec rspec --format documentation --format RspecJunitFormatter --out tmp/rspec-results.xml
+      - name: Upload test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: "RSpec Results (Ruby ${{ matrix.ruby }})"
+          path: tmp/rspec-results.xml
+          reporter: java-junit
 
   typecheck:
     runs-on: ubuntu-latest
